@@ -37,7 +37,6 @@ DEPEND_TABLE="Dependent"
 SCHED_TABLE="Schedule"
 PROJECT_TABLE="Project" # Form: project/name|file.sh
 HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0)
-
 ############################# Functions #################################
 # Display usage message.
 # param:  none
@@ -140,8 +139,7 @@ compile_apps_table()
 compile_project_table()
 {
     # This is simply a many-to-one relationship that lists the project name -> app.
-    perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' audit.apps.path.lst | sed 's,'"${HOME}"'/,'"$(hostname)"'|,g' | pipe.pl -oc0,c2,c1 > $PROJECT_TABLE
-    # cat $FILE_LIST | pipe.pl -W'\/' -oreverse | pipe.pl -oc0,c1,c2 -mc1:'/#' | pipe.pl -oreverse | pipe.pl -Oc0,c1 -mc10:"$HOSTNAME\|#" -oc0,last >$PROJECT_TABLE
+    perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' audit.apps.path.lst | sed 's,'"${HOME}"'/,'"${HOSTNAME}"'|,g' | pipe.pl -oc0,c2,c1 > $PROJECT_TABLE
 }
 ############################# Functions #################################
 
