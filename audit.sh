@@ -31,7 +31,7 @@ FALSE=1
 # of these tests doesn't allow the search and exploration of binary files.
 declare -a EXTENSIONS=('*.js' '*.sh' '*.py' '*.pl')
 ## Database
-DEPEND_TABLE="Dependent"    # Dependencies for scripts.
+DEPEND_TABLE="Dependent.lst"    # Dependencies for scripts.
 SCHED_TABLE="Schedule.lst"  # Actively scheduled scripts.
 PROJECT_TABLE="Project.lst" # Relates sibling scripts together.
 CONNECT_TABLE="Connect.lst" # The other servers the script may interact with.
@@ -124,12 +124,12 @@ compile_tables()
             # Add the file to the location table
             echo "$HOSTNAME|$file_name|$file_path" >>/tmp/audit.location.lst
             echo -n "["`date +'%Y-%m-%d %H:%M:%S'`"] analysing $file_name"
-            env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(?=.*\W)\w{2,}\.(pl|sh|py|js)\s/g){ chomp($script=$&);print("$ENV{HOST}|$script\n"); }' "$file_path" >>/tmp/audit.depend.lst
+            cat "$file_path" | sed -e '/^[ \t]*#/d' | env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(?=.*\W)\w{2,}\.(pl|sh|py|js)\s/g){ chomp($script=$&);print("$ENV{HOST}|$script\n"); }' - >>/tmp/audit.depend.lst
             echo -n ", dependencies: done"
             # Collect any information about whether this script talks with other servers. The markers are
             # 'ssh', 'mysql', 'sftp', 'HTTP', 'scp', IPs and hostnames.
             #  (\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})
-            env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/gi){ chomp($server=$&);$server=q/localhost/ if (! $server);print("$ENV{HOST}|$server\n"); }' "$file_path" >>/tmp/audit.connect.lst
+            cat "$file_path" | sed -e '/^[ \t]*#/d' | env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/gi){ chomp($server=$&);$server=q/localhost/ if (! $server);print("$ENV{HOST}|$server\n"); }' - >>/tmp/audit.connect.lst
             echo ", connections: done"
         fi
     done < "$FILE_LIST"
