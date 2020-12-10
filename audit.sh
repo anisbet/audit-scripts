@@ -37,6 +37,7 @@ DEPEND_TABLE="Dependent"
 SCHED_TABLE="Schedule"
 PROJECT_TABLE="Project" # Form: project/name|file.sh
 HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0)
+VERSION=0.1
 ############################# Functions #################################
 # Display usage message.
 # param:  none
@@ -109,27 +110,6 @@ find_scripts()
     done
 }
 
-# Compile the listed files into the 'Apps' table. Requires $FILE_LIST to run.
-# param:  none
-# return: none
-compile_apps_table()
-{
-    if [ -s "$FILE_LIST" ]; then
-        echo "["`date +'%Y-%m-%d %H:%M:%S'`"]Found "$(wc -l $FILE_LIST)" scripts for analysis."
-    else
-        echo "no scripts found in $HOME with the following extensions: " >&2
-        for i in "${EXTENSIONS[@]}"
-        do
-            echo "search included '$i'"
-        done
-        exit 1
-    fi
-    # Read the $FILE_LIST line by line and analyse for references to other scripts.
-    while IFS= read -r line; do
-        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] analysing $line"
-    done < "$FILE_LIST"
-}
-
 # The project table includes the names of all sibling, and daughter scripts that
 # are physically grouped in a directory, and sub-directories. A strong feature
 # of a project is the namespace the script's directory, and its parent directory.
@@ -138,9 +118,54 @@ compile_apps_table()
 # between .
 compile_project_table()
 {
+    if [ ! -s "$FILE_LIST" ]; then
+        echo "no scripts found in $HOME with the following extensions: " >&2
+        for i in "${EXTENSIONS[@]}"
+        do
+            echo "search included '$i'"
+        done
+        exit 1
+    fi
     # This is simply a many-to-one relationship that lists the project name -> app.
+    # Example:
+    # /home/ilsdev|three.js
+    # ilsdev1|monkey-mat.js|three.js/essential-threejs/assets/models/exported
+    # ilsdev1|estj-bone-2-anim.js|three.js/essential-threejs/assets/models/exported
+    # ilsdev1|monkey-anim.js|three.js/essential-threejs/assets/models/exported
     perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' audit.apps.path.lst | sed 's,'"${HOME}"'/,'"${HOSTNAME}"'|,g' | pipe.pl -oc0,c2,c1 > $PROJECT_TABLE
 }
+
+# Compile the listed files into the 'Dependent' table. Requires $FILE_LIST to run.
+# param:  none
+# return: none
+compile_dependent_table()
+{
+    if [ ! -s "$FILE_LIST" ]; then
+        echo "no scripts found in $HOME with the following extensions: " >&2
+        for i in "${EXTENSIONS[@]}"
+        do
+            echo "search included '$i'"
+        done
+        exit 1
+    fi
+    # Read the $FILE_LIST line by line and analyse for references to other scripts.
+    echo >/tmp/audit.depend.lst
+    while IFS= read -r line; do
+        if echo "$line" | egrep -i "*.js$" >/dev/null 2>/dev/null; then
+            echo "skipping js file"
+        elif echo "$line" | egrep -i "Makefile$" >/dev/null 2>/dev/null; then
+            echo "skipping Makefile file because they reference their targets necessarily"
+        else
+            echo "["`date +'%Y-%m-%d %H:%M:%S'`"] analysing $line"
+            local file_name=$(echo "$line" | perl -ne 'use File::Basename; print(basename($_));' -)
+            env HOST="$HOSTNAME|$file_name|$line" perl -n -e 'while(m/(?=.*\W)\w{2,}\.(pl|sh|py|js)\s/g){ chomp($script=$&);print("$ENV{HOST}|$script\n"); }' "$line" >>/tmp/audit.depend.lst
+        fi
+    done < "$FILE_LIST"
+    # Clean the Dependent table of duplicates, and files that reference themselves.
+    cat /tmp/audit.depend.lst | pipe.pl -oc0,c1,c3,c2 | pipe.pl -Bc1,c2 | pipe.pl -dc0,c1,c2 >$DEPEND_TABLE
+}
+
+
 ############################# Functions #################################
 
 
@@ -152,6 +177,7 @@ while getopts ":Acx" opt; do
         audit_cron
         find_scripts
         compile_project_table
+        compile_dependent_table
         ;;
     c)	echo "-c to audit the crontab only." >&2 
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SERVER_TABLE." >&2
