@@ -97,63 +97,21 @@ confirm()
 audit_cron()
 {
     # script | host | minute | hour | day | month | DOW
-    crontab -l | pipe.pl -Gc0:'#|SHELL' | pipe.pl -W'\s+' -gc5:'^\.$' -oc0,c1,c2,c3,c4,c6 -i | pipe.pl -oc0,c1,c2,c3,c4,c5 | pipe.pl -W'\/' -oc0,last | pipe.pl -oc5,exclude -mc6:"$HOSTNAME\|#" | pipe.pl -oc6,c5,remaining >$SCHED_TABLE
+    crontab -l | pipe.pl -Gc0:'#|SHELL' | pipe.pl -W'\s+' -gc5:'^\.$' -oc0,c1,c2,c3,c4,c6 -i | pipe.pl -oc0,c1,c2,c3,c4,c5 | pipe.pl -W'\/' -oc0,last | pipe.pl -oc5,exclude -mc6:"$HOSTNAME\|#" | pipe.pl -oc5,c6,remaining >$SCHED_TABLE
 }
 
-# Collect all the names of all scripts on this machine. The function ignores 
-# .git, .svn, .npm and other hidden files and directories
+# Compile the listed files into the 'Dependent' table. Requires $FILE_LIST to run.
 # param:  none
-find_scripts()
+# return: none
+compile_tables()
 {
-    # Start with a fresh list.
-    echo "" >$FILE_LIST
-    ## now loop through the above array
-    for i in "${EXTENSIONS[@]}"
-    do
-       echo "searching for extension: '$i'"
-       # During find ignore hidden files and directories. This avoids .npm and .git directories.
-       find $HOME -not -path "*/\.*" -name "$i" >> $FILE_LIST
-    done
-}
-
-# The project table includes the names of all sibling, and daughter scripts that
-# are physically grouped in a directory, and sub-directories. A strong feature
-# of a project is the namespace the script's directory, and its parent directory.
-# For example a file located in /home/user/a/b/foo.sh is well described as project 
-# 'a/b'. This identifies the difference between c/a foo.sh and a/b foo.sh.
-# between .
-compile_project_table()
-{
-    if [ ! -s "$FILE_LIST" ]; then
-        echo "no scripts found in $HOME with the following extensions: " >&2
-        for i in "${EXTENSIONS[@]}"
-        do
-            echo "search included '$i'"
-        done
-        exit 1
-    fi
     # This is simply a many-to-one relationship that lists the project name -> app.
     # Example:
     # /home/ilsdev|three.js
     # ilsdev1|monkey-mat.js|three.js/essential-threejs/assets/models/exported
     # ilsdev1|estj-bone-2-anim.js|three.js/essential-threejs/assets/models/exported
     # ilsdev1|monkey-anim.js|three.js/essential-threejs/assets/models/exported
-    perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' audit.apps.path.lst | sed 's,'"${HOME}"'/,'"${HOSTNAME}"'|,g' | pipe.pl -zc1 -oc0,c2,c1 > $PROJECT_TABLE
-}
-
-# Compile the listed files into the 'Dependent' table. Requires $FILE_LIST to run.
-# param:  none
-# return: none
-compile_dependent_table()
-{
-    if [ ! -s "$FILE_LIST" ]; then
-        echo "no scripts found in $HOME with the following extensions: " >&2
-        for i in "${EXTENSIONS[@]}"
-        do
-            echo "search included '$i'"
-        done
-        exit 1
-    fi
+    perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' "$FILE_LIST" | sed 's,'"${HOME}"'/,'"${HOSTNAME}"'|,g' | pipe.pl -oc0,c2,c1 | pipe.pl -zc1 > $PROJECT_TABLE
     # Read the $FILE_LIST line by line and analyse for references to other scripts.
     echo >/tmp/audit.depend.lst
     echo >/tmp/audit.connect.lst
@@ -178,10 +136,34 @@ compile_dependent_table()
     # Clean the Dependent table of duplicates, and files that reference themselves.
     cat /tmp/audit.depend.lst | pipe.pl -Bc1,c2 -zc1 | pipe.pl -dc0,c1,c2 >$DEPEND_TABLE
     cat /tmp/audit.connect.lst | pipe.pl -Bc1,c2 -zc1 | pipe.pl -dc0,c1,c2 >$CONNECT_TABLE
-    cat /tmp/audit.location.lst >$LOCATION_TABLE
+    cat /tmp/audit.location.lst | pipe.pl -zc1 >$LOCATION_TABLE
 }
 
-
+# Collect all the names of all scripts on this machine. The function ignores 
+# .git, .svn, .npm and other hidden files and directories
+# param:  none
+audit_scripts()
+{
+    # Start with a fresh list.
+    echo >$FILE_LIST
+    ## now loop through the above array
+    for i in "${EXTENSIONS[@]}"
+    do
+       echo "searching for extension: '$i'"
+       # During find ignore hidden files and directories. This avoids .npm and .git directories.
+       find $HOME -not -path "*/\.*" -name "$i" >> $FILE_LIST
+    done
+    if [ ! -s "$FILE_LIST" ]; then
+        echo "no scripts found in $HOME with the following extensions: " >&2
+        for i in "${EXTENSIONS[@]}"
+        do
+            echo "search included '$i'"
+        done
+        exit 1
+    fi
+    # Carry on with compilation of table data as lists.
+    compile_tables
+}
 ############################# Functions #################################
 
 
@@ -191,9 +173,7 @@ while getopts ":Acx" opt; do
     A)  echo "-A to audit and create all tables." >&2
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_TABLE." >&2
         audit_cron
-        find_scripts
-        compile_project_table
-        compile_dependent_table
+        audit_scripts
         ;;
     c)	echo "-c to audit the crontab only." >&2 
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_TABLE." >&2
@@ -201,8 +181,7 @@ while getopts ":Acx" opt; do
         ;;
     x)	usage
         ;;
-    \?)	echo "** Invalid option: -$OPTARG" >&2
-        usage
+    \?)	usage
         ;;
     *)	echo "** Invalid option: -$OPTARG" >&2
         usage
