@@ -29,14 +29,14 @@ TRUE=0
 FALSE=1
 # These are the types of files we will be specificaly targetting. The nature
 # of these tests doesn't allow the search and exploration of binary files.
-declare -a EXTENSIONS=('*.js' '*.sh' '*.py' '*.pl' 'Makefile')
+declare -a EXTENSIONS=('*.js' '*.sh' '*.py' '*.pl')
 ## Database
-APP_TABLE="App"
-SERVER_TABLE="Server"
-DEPEND_TABLE="Dependent"
-SCHED_TABLE="Schedule"
-PROJECT_TABLE="Project" # Form: project/name|file.sh
-HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0)
+DEPEND_TABLE="Dependent"    # Dependencies for scripts.
+SCHED_TABLE="Schedule.lst"  # Actively scheduled scripts.
+PROJECT_TABLE="Project.lst" # Relates sibling scripts together.
+CONNECT_TABLE="Connect.lst" # The other servers the script may interact with.
+LOCATION_TABLE="Location.lst" # Where the file is located on a given server's file system.
+HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0) # just the conventional name of the server.
 VERSION=0.1
 ############################# Functions #################################
 # Display usage message.
@@ -52,6 +52,12 @@ Usage: $0 [-option]
  further analysis, but the final goal is to automate and if possible, illustrate
  the relationships of home brew software that interact with the ILS.
 
+ Switches:
+ -A: Perform all tasks required in an audit. Includes searching for all the scripts
+     analysing them for dependencies, schedule, logging their projects, 
+     creating a database called $DBASE.
+ -c: Checks the cron for actively scheduled scripts and reports.
+ 
  Version: $VERSION
 EOFU!
     exit 3
@@ -132,7 +138,7 @@ compile_project_table()
     # ilsdev1|monkey-mat.js|three.js/essential-threejs/assets/models/exported
     # ilsdev1|estj-bone-2-anim.js|three.js/essential-threejs/assets/models/exported
     # ilsdev1|monkey-anim.js|three.js/essential-threejs/assets/models/exported
-    perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' audit.apps.path.lst | sed 's,'"${HOME}"'/,'"${HOSTNAME}"'|,g' | pipe.pl -oc0,c2,c1 > $PROJECT_TABLE
+    perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' audit.apps.path.lst | sed 's,'"${HOME}"'/,'"${HOSTNAME}"'|,g' | pipe.pl -zc1 -oc0,c2,c1 > $PROJECT_TABLE
 }
 
 # Compile the listed files into the 'Dependent' table. Requires $FILE_LIST to run.
@@ -150,19 +156,29 @@ compile_dependent_table()
     fi
     # Read the $FILE_LIST line by line and analyse for references to other scripts.
     echo >/tmp/audit.depend.lst
-    while IFS= read -r line; do
-        if echo "$line" | egrep -i "*.js$" >/dev/null 2>/dev/null; then
-            echo "skipping js file"
-        elif echo "$line" | egrep -i "Makefile$" >/dev/null 2>/dev/null; then
-            echo "skipping Makefile file because they reference their targets necessarily"
+    echo >/tmp/audit.connect.lst
+    echo >/tmp/audit.location.lst
+    while IFS= read -r file_path; do
+        if echo "$file_path" | egrep -i "*.js$" >/dev/null 2>/dev/null; then
+            echo "skipping $file_path"
         else
-            echo "["`date +'%Y-%m-%d %H:%M:%S'`"] analysing $line"
-            local file_name=$(echo "$line" | perl -ne 'use File::Basename; print(basename($_));' -)
-            env HOST="$HOSTNAME|$file_name|$line" perl -n -e 'while(m/(?=.*\W)\w{2,}\.(pl|sh|py|js)\s/g){ chomp($script=$&);print("$ENV{HOST}|$script\n"); }' "$line" >>/tmp/audit.depend.lst
+            local file_name=$(echo "$file_path" | perl -ne 'use File::Basename; print(basename($_));' -)
+            # Add the file to the location table
+            echo "$HOSTNAME|$file_name|$file_path" >>/tmp/audit.location.lst
+            echo -n "["`date +'%Y-%m-%d %H:%M:%S'`"] analysing $file_name"
+            env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(?=.*\W)\w{2,}\.(pl|sh|py|js)\s/g){ chomp($script=$&);print("$ENV{HOST}|$script\n"); }' "$file_path" >>/tmp/audit.depend.lst
+            echo -n ", dependencies: done"
+            # Collect any information about whether this script talks with other servers. The markers are
+            # 'ssh', 'mysql', 'sftp', 'HTTP', 'scp', IPs and hostnames.
+            #  (\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})
+            env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/gi){ chomp($server=$&);$server=q/localhost/ if (! $server);print("$ENV{HOST}|$server\n"); }' "$file_path" >>/tmp/audit.connect.lst
+            echo ", connections: done"
         fi
     done < "$FILE_LIST"
     # Clean the Dependent table of duplicates, and files that reference themselves.
-    cat /tmp/audit.depend.lst | pipe.pl -oc0,c1,c3,c2 | pipe.pl -Bc1,c2 | pipe.pl -dc0,c1,c2 >$DEPEND_TABLE
+    cat /tmp/audit.depend.lst | pipe.pl -Bc1,c2 -zc1 | pipe.pl -dc0,c1,c2 >$DEPEND_TABLE
+    cat /tmp/audit.connect.lst | pipe.pl -Bc1,c2 -zc1 | pipe.pl -dc0,c1,c2 >$CONNECT_TABLE
+    cat /tmp/audit.location.lst >$LOCATION_TABLE
 }
 
 
@@ -173,19 +189,22 @@ compile_dependent_table()
 while getopts ":Acx" opt; do
   case $opt in
     A)  echo "-A to audit and create all tables." >&2
-        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SERVER_TABLE." >&2
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_TABLE." >&2
         audit_cron
         find_scripts
         compile_project_table
         compile_dependent_table
         ;;
     c)	echo "-c to audit the crontab only." >&2 
-        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SERVER_TABLE." >&2
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_TABLE." >&2
         audit_cron
         ;;
     x)	usage
         ;;
-    \?)	echo "Invalid option: -$OPTARG" >&2
+    \?)	echo "** Invalid option: -$OPTARG" >&2
+        usage
+        ;;
+    *)	echo "** Invalid option: -$OPTARG" >&2
         usage
         ;;
   esac
