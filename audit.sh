@@ -128,8 +128,8 @@ compile_tables()
             echo -n ", dependencies: done"
             # Collect any information about whether this script talks with other servers. The markers are
             # 'ssh', 'mysql', 'sftp', 'HTTP', 'scp', IPs and hostnames.
-            #  (\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})
-            cat "$file_path" | sed -e '/^[ \t]*#/d' | env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/gi){ chomp($server=$&);$server=q/localhost/ if (! $server);print("$ENV{HOST}|$server\n"); }' - >>/tmp/audit.connect.lst
+            #  (\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp|mailx)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})
+            cat "$file_path" | sed -e '/^[ \t]*#/d' | env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp|mailx)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/gi){ chomp($server=$&);$server=q/localhost/ if (! $server);print("$ENV{HOST}|$server\n"); }' - >>/tmp/audit.connect.lst
             echo ", connections: done"
         fi
     done < "$FILE_LIST"
