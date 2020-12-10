@@ -2,3 +2,5 @@ Schedule
 Project
 *.lst
 Makefile
+Dependent
+test*
