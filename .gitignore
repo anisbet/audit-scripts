@@ -5,3 +5,5 @@ Makefile
 Dependent
 test*
 backup.tgz
+*.tgz
+audit.db

@@ -43,7 +43,7 @@ PROJECT_LIST="$PROJECT.lst"   # Relates sibling scripts together.
 CONNECT_LIST="$CONNECT.lst"   # The other servers the script may interact with.
 LOCATION_LIST="$LOCATION.lst" # Where the file is located on a given server's file system.
 HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0) # just the conventional name of the server.
-VERSION=0.1
+VERSION=1.0
 ############################# Functions #################################
 # Display usage message.
 # param:  none
