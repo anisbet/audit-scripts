@@ -31,11 +31,17 @@ FALSE=1
 # of these tests doesn't allow the search and exploration of binary files.
 declare -a EXTENSIONS=('*.js' '*.sh' '*.py' '*.pl')
 ## Database
-DEPEND_TABLE="Dependent.lst"    # Dependencies for scripts.
-SCHED_TABLE="Schedule.lst"  # Actively scheduled scripts.
-PROJECT_TABLE="Project.lst" # Relates sibling scripts together.
-CONNECT_TABLE="Connect.lst" # The other servers the script may interact with.
-LOCATION_TABLE="Location.lst" # Where the file is located on a given server's file system.
+DEPEND="Dependent"
+SCHED="Schedule"
+PROJECT="Project"
+CONNECT="Connect"
+LOCATION="Location"
+## flat file names.
+DEPEND_LIST="$DEPEND.lst"  # Dependencies for scripts.
+SCHED_LIST="$SCHED.lst"    # Actively scheduled scripts.
+PROJECT_LIST="$PROJECT.lst"   # Relates sibling scripts together.
+CONNECT_LIST="$CONNECT.lst"   # The other servers the script may interact with.
+LOCATION_LIST="$LOCATION.lst" # Where the file is located on a given server's file system.
 HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0) # just the conventional name of the server.
 VERSION=0.1
 ############################# Functions #################################
@@ -53,10 +59,16 @@ Usage: $0 [-option]
  the relationships of home brew software that interact with the ILS.
 
  Switches:
+ -a: Audit scripts and create flat files only. See -d to have the files loaded.
  -A: Perform all tasks required in an audit. Includes searching for all the scripts
      analysing them for dependencies, schedule, logging their projects, 
      creating a database called $DBASE.
  -c: Checks the cron for actively scheduled scripts and reports.
+ -d: Build the database and load the data.
+ -s: Show the database schema. If the database doesn't exist you will be prompted 
+     to build it. If *.sql files exist in the directory, they will be laoded
+     otherwise an empty database is created, and the schema output to STDOUT.
+ -x: Displays this usage message.
  
  Version: $VERSION
 EOFU!
@@ -73,7 +85,7 @@ confirm()
 		exit $FALSE
 	fi
 	local message="$1"
-	echo "$message? y/[n]: " >&2
+	echo -n "$message? y/[n]: " >&2
 	read answer
 	case "$answer" in
 		[yY])
@@ -93,16 +105,14 @@ confirm()
 # load_discards.sh|ilsdev1|30|08|*|*|1,2,3,4,5
 # statdb.pl|ilsdev1|30|21|*|*|*
 # param:  none.
-# return: none.
 audit_cron()
 {
     # script | host | minute | hour | day | month | DOW
-    crontab -l | pipe.pl -Gc0:'#|SHELL' | pipe.pl -W'\s+' -gc5:'^\.$' -oc0,c1,c2,c3,c4,c6 -i | pipe.pl -oc0,c1,c2,c3,c4,c5 | pipe.pl -W'\/' -oc0,last | pipe.pl -oc5,exclude -mc6:"$HOSTNAME\|#" | pipe.pl -oc5,c6,remaining >$SCHED_TABLE
+    crontab -l | pipe.pl -Gc0:'#|SHELL' | pipe.pl -W'\s+' -gc5:'^\.$' -oc0,c1,c2,c3,c4,c6 -i | pipe.pl -oc0,c1,c2,c3,c4,c5 | pipe.pl -W'\/' -oc0,last | pipe.pl -oc5,exclude -mc6:"$HOSTNAME\|#" | pipe.pl -oc5,c6,remaining >$SCHED_LIST
 }
 
 # Compile the listed files into the 'Dependent' table. Requires $FILE_LIST to run.
 # param:  none
-# return: none
 compile_tables()
 {
     # This is simply a many-to-one relationship that lists the project name -> app.
@@ -111,7 +121,7 @@ compile_tables()
     # ilsdev1|monkey-mat.js|three.js/essential-threejs/assets/models/exported
     # ilsdev1|estj-bone-2-anim.js|three.js/essential-threejs/assets/models/exported
     # ilsdev1|monkey-anim.js|three.js/essential-threejs/assets/models/exported
-    perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' "$FILE_LIST" | sed 's,'"${HOME}"'/,'"${HOSTNAME}"'|,g' | pipe.pl -oc0,c2,c1 | pipe.pl -zc1 > $PROJECT_TABLE
+    perl -n -e 'use File::Basename; print(dirname($_)."|".basename($_));' "$FILE_LIST" | sed 's,'"${HOME}"'/,'"${HOSTNAME}"'|,g' | pipe.pl -oc0,c2,c1 | pipe.pl -zc1 > $PROJECT_LIST
     # Read the $FILE_LIST line by line and analyse for references to other scripts.
     echo >/tmp/audit.depend.lst
     echo >/tmp/audit.connect.lst
@@ -120,23 +130,27 @@ compile_tables()
         if echo "$file_path" | egrep -i "*.js$" >/dev/null 2>/dev/null; then
             echo "skipping $file_path"
         else
+            # Get the name of the file but the script doesn't process links, so don't emit an error of file not found.
             local file_name=$(echo "$file_path" | perl -ne 'use File::Basename; print(basename($_));' -)
+            if [ -z "$file_name" ]; then
+                continue
+            fi
             # Add the file to the location table
             echo "$HOSTNAME|$file_name|$file_path" >>/tmp/audit.location.lst
             echo -n "["`date +'%Y-%m-%d %H:%M:%S'`"] analysing $file_name"
-            cat "$file_path" | sed -e '/^[ \t]*#/d' | env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(?=.*\W)\w{2,}\.(pl|sh|py|js)\s/g){ chomp($script=$&);print("$ENV{HOST}|$script\n"); }' - >>/tmp/audit.depend.lst
+            cat "$file_path" 2>/dev/null | sed -e '/^[ \t]*#/d' | env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(?=.*\W)\w{2,}\.(pl|sh|py|js)\s/g){ chomp($script=$&);print("$ENV{HOST}|$script\n"); }' - >>/tmp/audit.depend.lst
             echo -n ", dependencies: done"
             # Collect any information about whether this script talks with other servers. The markers are
             # 'ssh', 'mysql', 'sftp', 'HTTP', 'scp', IPs and hostnames.
             #  (\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp|mailx)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})
-            cat "$file_path" | sed -e '/^[ \t]*#/d' | env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp|mailx)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/gi){ chomp($server=$&);$server=q/localhost/ if (! $server);print("$ENV{HOST}|$server\n"); }' - >>/tmp/audit.connect.lst
+            cat "$file_path" 2>/dev/null | sed -e '/^[ \t]*#/d' | env HOST="$HOSTNAME|$file_name" perl -n -e 'while(m/(\w+((\.\w+)+)?\@\w+((\.\w+)+)?)|((?=\s?)(mysql|ssh|scp|sftp|mailx)\s)|(http:\/\/\w+((\.\w+)+)?)|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/gi){ chomp($server=$&);$server=q/localhost/ if (! $server);print("$ENV{HOST}|$server\n"); }' - >>/tmp/audit.connect.lst
             echo ", connections: done"
         fi
     done < "$FILE_LIST"
     # Clean the Dependent table of duplicates, and files that reference themselves.
-    cat /tmp/audit.depend.lst | pipe.pl -Bc1,c2 -zc1 | pipe.pl -dc0,c1,c2 >$DEPEND_TABLE
-    cat /tmp/audit.connect.lst | pipe.pl -Bc1,c2 -zc1 | pipe.pl -dc0,c1,c2 >$CONNECT_TABLE
-    cat /tmp/audit.location.lst | pipe.pl -zc1 >$LOCATION_TABLE
+    cat /tmp/audit.depend.lst | pipe.pl -Bc1,c2 -zc1 | pipe.pl -dc0,c1,c2 >$DEPEND_LIST
+    cat /tmp/audit.connect.lst | pipe.pl -Bc1,c2 -zc1 | pipe.pl -dc0,c1,c2 >$CONNECT_LIST
+    cat /tmp/audit.location.lst | pipe.pl -zc1 >$LOCATION_LIST
 }
 
 # Collect all the names of all scripts on this machine. The function ignores 
@@ -164,20 +178,211 @@ audit_scripts()
     # Carry on with compilation of table data as lists.
     compile_tables
 }
-############################# Functions #################################
+
+# Creates a SQL database (Sqlite3) and if possible, populates it with data from *.sql files
+# in the current directory.
+# param:  none
+build_database()
+{
+    # DEPEND
+    # ilsdev1|ClaimsReturnedToMissing.sh|dischargeitemchargeitem.pl
+    # ilsdev1|ClaimsReturnedToMissing.sh|setscriptenvironment.sh
+    # ilsdev1|FixItemLibraryForItemTransfers.sh|FixItemLibraryForItemTransfers_EditItem_Edits.sh
+    local server="server"
+    local script="script"
+    local c0="dependent"
+    local c1=""
+    local c2=""
+    local c3=""
+    local c4=""
+    sqlite3 $DBASE <<END_SQL
+CREATE TABLE IF NOT EXISTS $DEPEND (
+    $server CHAR(60),
+    $script CHAR(128),
+    $c0 CHAR(128),
+    PRIMARY KEY ($server, $script, $c0)
+);
+END_SQL
+    # And indices
+    sqlite3 $DBASE <<END_SQL
+CREATE UNIQUE INDEX IF NOT EXISTS idx_depend_script ON $DEPEND ($script);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dependent ON $DEPEND ($c0);
+END_SQL
+    if [ -s "$DEPEND_LIST" ]; then
+        # Load the data
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $DEPEND statements"
+        env table="$DEPEND" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $DEPEND_LIST >$DEPEND.sql
+        # Then load with:
+        cat $DEPEND.sql | sqlite3 $DBASE
+        echo "$DEPEND.sql loaded."
+    else
+        echo "Created table $DEPEND and indices, no data to load." >&2
+    fi
+    
+    
+    c0="namespace"
+    # PROJECT
+    # ilsdev1|monkey-mat.js|three.js/essential-threejs/assets/models/exported
+    # ilsdev1|estj-bone-2-anim.js|three.js/essential-threejs/assets/models/exported
+    # ilsdev1|monkey-anim.js|three.js/essential-threejs/assets/models/exported
+    sqlite3 $DBASE <<END_SQL
+CREATE TABLE IF NOT EXISTS $PROJECT (
+    $server CHAR(60),
+    $script CHAR(128),
+    $c0 CHAR(2048)
+);
+END_SQL
+    # And indices
+    sqlite3 $DBASE <<END_SQL
+CREATE UNIQUE INDEX IF NOT EXISTS idx_project_script ON $PROJECT ($script);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_namespace ON $PROJECT ($c0);
+END_SQL
+    # Load the data
+    if [ -s "$PROJECT_LIST" ]; then
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $PROJECT statements"
+        env table="$PROJECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $PROJECT_LIST >$PROJECT.sql
+        # Then load with:
+        cat $PROJECT.sql | sqlite3 $DBASE
+        echo "$PROJECT.sql loaded."
+    else
+        echo "Created table $PROJECT and indices, no data to load." >&2
+    fi
+    
+    
+    c0="resource"
+    # CONNECT
+    # ilsdev1|ClaimsReturnedToMissing.sh|mailx
+    # ilsdev1|FixItemLibraryForItemTransfers.sh|ilsadmins@epl.ca
+    # ilsdev1|PrepareAndTransferBIBsAndAuthsToBackstage.pl|mailx
+    sqlite3 $DBASE <<END_SQL
+CREATE TABLE IF NOT EXISTS $CONNECT (
+    $server CHAR(60),
+    $script CHAR(128),
+    $c0 CHAR(128)
+);
+END_SQL
+    # And indices
+    sqlite3 $DBASE <<END_SQL
+CREATE UNIQUE INDEX IF NOT EXISTS idx_connect_script ON $CONNECT ($script);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_resource ON $CONNECT ($c0);
+END_SQL
+    # Load the data
+    if [ -s "$CONNECT_LIST" ]; then
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $CONNECT statements"
+        env table="$CONNECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $CONNECT_LIST >$CONNECT.sql
+        # Then load with:
+        cat $CONNECT.sql | sqlite3 $DBASE
+        echo "$CONNECT.sql loaded."
+    else
+        echo "Created table $CONNECT and indices, no data to load." >&2
+    fi
+    
+    c0="path"
+    # LOCATION
+    # ilsdev1|Readme.sh|/home/ilsdev/reports/staffcheckouts/Readme.sh
+    # ilsdev1|create_report.sh|/home/ilsdev/reports/create_report.sh
+    sqlite3 $DBASE <<END_SQL
+CREATE TABLE IF NOT EXISTS $LOCATION (
+    $server CHAR(60),
+    $script CHAR(128),
+    $c0 CHAR(2048),
+    PRIMARY KEY ($server, $script, $c0)
+);
+END_SQL
+    # Indices
+    sqlite3 $DBASE <<END_SQL
+CREATE UNIQUE INDEX IF NOT EXISTS idx_location_script ON $LOCATION ($script);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_path ON $LOCATION ($c0);
+END_SQL
+    # Load the data
+    if [ -s "$LOCATION_LIST" ]; then
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $LOCATION statements"
+        env table="$LOCATION" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $LOCATION_LIST >$LOCATION.sql
+        # Then load with:
+        cat $LOCATION.sql | sqlite3 $DBASE
+        echo "$LOCATION.sql loaded."
+    else
+        echo "Created table $LOCATION and indices, no data to load." >&2
+    fi
+    
+    c0="minute"
+    c1="hour"
+    c2="dom"
+    c3="month"
+    c4="dow"
+    # SCHED
+    # ilsdev1|backuprotate.sh|30|21|*|*|*
+    # ilsdev1|run.sh|00|21|*|*|2,3,4,5
+    # ilsdev1|run.sh|00|06|*|*|1
+    sqlite3 $DBASE <<END_SQL
+CREATE TABLE IF NOT EXISTS $SCHED (
+    $server CHAR(60),
+    $script CHAR(128),
+    $c0 CHAR(256),
+    $c1 CHAR(256),
+    $c2 CHAR(256),
+    $c3 CHAR(256),
+    $c4 CHAR(256)
+);
+END_SQL
+    # Indices
+    sqlite3 $DBASE <<END_SQL
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sched_script ON $SCHED ($script);
+END_SQL
+    # Load the data
+    if [ -s "$SCHED_LIST" ]; then
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $SCHED statements"
+        env table="$SCHED" env a="$server" env b="$script" env c="$c0" env d="$c1" env e="$c2" env f="$c3" env g="$c4" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}, $ENV{d}, $ENV{e}, $ENV{f}, $ENV{g}) VALUES ("$v[0]", "$v[1]", "$v[2]", "$v[3]", "$v[4]", "$v[5]", "$v[6]");\n/);' $SCHED_LIST >$SCHED.sql
+        # Then load with:
+        cat $SCHED.sql | sqlite3 $DBASE
+        echo "$SCHED.sql loaded."
+    else
+        echo "Created table $SCHED and indices, no data to load." >&2
+    fi
+}
+############################# End of Functions #################################
 
 
 # Loop through the file list and pull out relevant info in pipe-delimited files appending as we go.
-while getopts ":Acx" opt; do
+while getopts ":aAcdsx?" opt; do
   case $opt in
-    A)  echo "-A to audit and create all tables." >&2
-        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_TABLE." >&2
+    A)  echo "-A to audit and create all tables as flat files. See (-d) to create the database." >&2
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_LIST." >&2
         audit_cron
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] conducting audit." >&2
+        audit_scripts
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding data to the database." >&2
+        build_database
+        ;;
+    a)  echo "-a to audit scripts and create flat files only. See (-d) to create the database." >&2
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_LIST." >&2
+        audit_cron
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] conducting audit." >&2
         audit_scripts
         ;;
     c)	echo "-c to audit the crontab only." >&2 
-        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_TABLE." >&2
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_LIST." >&2
         audit_cron
+        ;;
+    d)	echo "-d to create database from existing files." >&2 
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] building database: $DBASE." >&2
+        build_database
+        ;;
+    s)  echo "-s to display database schema." >&2
+        if [ -s "$DBASE" ]; then
+            echo ".schema" | sqlite3 $DBASE
+        else
+            echo "$DBASE doesn't exist yet. I can create it, and load any data in "`pwd` >&2
+            ANSWER=$(confirm "re-create $DBASE and load any data ")
+            if [ "$ANSWER" == "$FALSE" ]; then
+                echo "Nothing to do. exiting" >&2
+                exit 1
+            else
+                echo "["`date +'%Y-%m-%d %H:%M:%S'`"] creating $DBASE and loading data." >&2
+                build_database
+                echo ".schema" | sqlite3 $DBASE
+            fi
+        fi
         ;;
     x)	usage
         ;;
