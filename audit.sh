@@ -205,13 +205,12 @@ CREATE TABLE IF NOT EXISTS $DEPEND (
 END_SQL
     # And indices
     sqlite3 $DBASE <<END_SQL
-CREATE UNIQUE INDEX IF NOT EXISTS idx_depend_script ON $DEPEND ($script);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_dependent ON $DEPEND ($c0);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_depend_server_script ON $DEPEND ($server, $script, $c0);
 END_SQL
     if [ -s "$DEPEND_LIST" ]; then
         # Load the data
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $DEPEND statements"
-        env table="$DEPEND" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $DEPEND_LIST >$DEPEND.sql
+        env table="$DEPEND" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $DEPEND_LIST >$DEPEND.sql
         # Then load with:
         cat $DEPEND.sql | sqlite3 $DBASE
         echo "$DEPEND.sql loaded."
@@ -229,18 +228,18 @@ END_SQL
 CREATE TABLE IF NOT EXISTS $PROJECT (
     $server CHAR(60),
     $script CHAR(128),
-    $c0 CHAR(2048)
+    $c0 CHAR(2048),
+    PRIMARY KEY ($server, $script, $c0)
 );
 END_SQL
     # And indices
     sqlite3 $DBASE <<END_SQL
-CREATE UNIQUE INDEX IF NOT EXISTS idx_project_script ON $PROJECT ($script);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_namespace ON $PROJECT ($c0);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_project_server_script ON $PROJECT ($server, $script, $c0);
 END_SQL
     # Load the data
     if [ -s "$PROJECT_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $PROJECT statements"
-        env table="$PROJECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $PROJECT_LIST >$PROJECT.sql
+        env table="$PROJECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $PROJECT_LIST >$PROJECT.sql
         # Then load with:
         cat $PROJECT.sql | sqlite3 $DBASE
         echo "$PROJECT.sql loaded."
@@ -258,18 +257,18 @@ END_SQL
 CREATE TABLE IF NOT EXISTS $CONNECT (
     $server CHAR(60),
     $script CHAR(128),
-    $c0 CHAR(128)
+    $c0 CHAR(128),
+    PRIMARY KEY ($server, $script, $c0)
 );
 END_SQL
     # And indices
     sqlite3 $DBASE <<END_SQL
-CREATE UNIQUE INDEX IF NOT EXISTS idx_connect_script ON $CONNECT ($script);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_resource ON $CONNECT ($c0);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_connect_server_script ON $CONNECT ($server, $script, $c0);
 END_SQL
     # Load the data
     if [ -s "$CONNECT_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $CONNECT statements"
-        env table="$CONNECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $CONNECT_LIST >$CONNECT.sql
+        env table="$CONNECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $CONNECT_LIST >$CONNECT.sql
         # Then load with:
         cat $CONNECT.sql | sqlite3 $DBASE
         echo "$CONNECT.sql loaded."
@@ -291,13 +290,12 @@ CREATE TABLE IF NOT EXISTS $LOCATION (
 END_SQL
     # Indices
     sqlite3 $DBASE <<END_SQL
-CREATE UNIQUE INDEX IF NOT EXISTS idx_location_script ON $LOCATION ($script);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_path ON $LOCATION ($c0);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_location_server_script ON $LOCATION ($server, $script, $c0);
 END_SQL
     # Load the data
     if [ -s "$LOCATION_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $LOCATION statements"
-        env table="$LOCATION" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $LOCATION_LIST >$LOCATION.sql
+        env table="$LOCATION" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $LOCATION_LIST >$LOCATION.sql
         # Then load with:
         cat $LOCATION.sql | sqlite3 $DBASE
         echo "$LOCATION.sql loaded."
@@ -322,17 +320,18 @@ CREATE TABLE IF NOT EXISTS $SCHED (
     $c1 CHAR(256),
     $c2 CHAR(256),
     $c3 CHAR(256),
-    $c4 CHAR(256)
+    $c4 CHAR(256),
+    PRIMARY KEY ($server, $script)
 );
 END_SQL
     # Indices
     sqlite3 $DBASE <<END_SQL
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sched_script ON $SCHED ($script);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sched_server_script ON $SCHED ($server, $script);
 END_SQL
     # Load the data
     if [ -s "$SCHED_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $SCHED statements"
-        env table="$SCHED" env a="$server" env b="$script" env c="$c0" env d="$c1" env e="$c2" env f="$c3" env g="$c4" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR IGNORE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}, $ENV{d}, $ENV{e}, $ENV{f}, $ENV{g}) VALUES ("$v[0]", "$v[1]", "$v[2]", "$v[3]", "$v[4]", "$v[5]", "$v[6]");\n/);' $SCHED_LIST >$SCHED.sql
+        env table="$SCHED" env a="$server" env b="$script" env c="$c0" env d="$c1" env e="$c2" env f="$c3" env g="$c4" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}, $ENV{d}, $ENV{e}, $ENV{f}, $ENV{g}) VALUES ("$v[0]", "$v[1]", "$v[2]", "$v[3]", "$v[4]", "$v[5]", "$v[6]");\n/);' $SCHED_LIST >$SCHED.sql
         # Then load with:
         cat $SCHED.sql | sqlite3 $DBASE
         echo "$SCHED.sql loaded."
