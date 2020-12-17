@@ -432,11 +432,16 @@ while getopts ":aAcdRsx?" opt; do
             if [ "$ANSWER" == "$FALSE" ]; then
                 echo "Nothing to do. exiting" >&2
                 exit 1
+            else
+                if ls *.tar >/dev/null 2>/dev/null; then
+                    rm "$DBASE" 2>/dev/null
+                else
+                    echo "no tar files to load. exiting." >&2
+                fi
             fi
         fi
-        rm "$DBASE" 2>/dev/null
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] creating $DBASE and loading data." >&2
-        for TARBALL in $(ls *.audit.tar); do
+        for TARBALL in $(ls *.audit.tar 2>/dev/null); do
             echo "working on $TARBALL..." >&2
             tar xvf "$TARBALL"
             build_database
