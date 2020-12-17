@@ -436,7 +436,8 @@ while getopts ":aAcdRsx?" opt; do
                 if ls *.tar >/dev/null 2>/dev/null; then
                     rm "$DBASE" 2>/dev/null
                 else
-                    echo "no tar files to load. exiting." >&2
+                    echo "["`date +'%Y-%m-%d %H:%M:%S'`"] no tar files to load. $DBASE preserved. exiting." >&2
+                    exit 1
                 fi
             fi
         fi
