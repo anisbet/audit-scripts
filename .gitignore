@@ -7,3 +7,4 @@ test*
 backup.tgz
 *.tgz
 audit.db
+*.tar

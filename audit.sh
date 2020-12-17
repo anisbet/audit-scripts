@@ -42,8 +42,9 @@ SCHED_LIST="$SCHED.lst"    # Actively scheduled scripts.
 PROJECT_LIST="$PROJECT.lst"   # Relates sibling scripts together.
 CONNECT_LIST="$CONNECT.lst"   # The other servers the script may interact with.
 LOCATION_LIST="$LOCATION.lst" # Where the file is located on a given server's file system.
+declare -a OUTPUT_FILES=("$FILE_LIST" "$DEPEND_LIST" "$SCHED_LIST" "$PROJECT_LIST" "$CONNECT_LIST" "$LOCATION_LIST")
 HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0) # just the conventional name of the server.
-VERSION=1.2
+VERSION=1.3
 ############################# Functions #################################
 # Display usage message.
 # param:  none
@@ -69,6 +70,8 @@ Usage: $0 [-option]
      the files, then deletes all of its' list files.
  -c: Checks the cron for actively scheduled scripts and reports.
  -d: Build the database and load the data.
+ -R: Rebuilds the database. Removes the $DBASE and recreates it, then unpacks all
+     the audit tarballs in the current directory and reloads the data, and cleans up.
  -s: Show the database schema. If the database doesn't exist you will be prompted 
      to build it. If *.sql files exist in the directory, they will be laoded
      otherwise an empty database is created, and the schema output to STDOUT.
@@ -214,10 +217,14 @@ END_SQL
     if [ -s "$DEPEND_LIST" ]; then
         # Load the data
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $DEPEND statements"
-        env table="$DEPEND" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $DEPEND_LIST >$DEPEND.sql
+        env table="$DEPEND" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $DEPEND_LIST >$DEPEND_LIST.sql
         # Then load with:
-        cat $DEPEND.sql | sqlite3 $DBASE
-        echo "$DEPEND.sql loaded."
+        if sqlite3 $DBASE <$DEPEND_LIST.sql; then
+            echo "$DEPEND_LIST.sql loaded."
+            rm "$DEPEND_LIST.sql" 2>/dev/null
+        else
+            echo "**error failed to load $DEPEND_LIST.sql" >&2
+        fi
     else
         echo "Created table $DEPEND and indices, no data to load." >&2
     fi
@@ -243,10 +250,14 @@ END_SQL
     # Load the data
     if [ -s "$PROJECT_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $PROJECT statements"
-        env table="$PROJECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $PROJECT_LIST >$PROJECT.sql
+        env table="$PROJECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $PROJECT_LIST >$PROJECT_LIST.sql
         # Then load with:
-        cat $PROJECT.sql | sqlite3 $DBASE
-        echo "$PROJECT.sql loaded."
+        if sqlite3 $DBASE <$PROJECT_LIST.sql; then
+            echo "$PROJECT_LIST.sql loaded."
+            rm "$PROJECT_LIST.sql" 2>/dev/null
+        else
+            echo "**error failed to load $PROJECT_LIST.sql" >&2
+        fi
     else
         echo "Created table $PROJECT and indices, no data to load." >&2
     fi
@@ -272,10 +283,14 @@ END_SQL
     # Load the data
     if [ -s "$CONNECT_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $CONNECT statements"
-        env table="$CONNECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $CONNECT_LIST >$CONNECT.sql
+        env table="$CONNECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $CONNECT_LIST >$CONNECT_LIST.sql
         # Then load with:
-        cat $CONNECT.sql | sqlite3 $DBASE
-        echo "$CONNECT.sql loaded."
+        if sqlite3 $DBASE <$CONNECT_LIST.sql; then
+            echo "$CONNECT_LIST.sql loaded."
+            rm "$CONNECT_LIST.sql" 2>/dev/null
+        else
+            echo "**error failed to load $CONNECT_LIST.sql" >&2
+        fi
     else
         echo "Created table $CONNECT and indices, no data to load." >&2
     fi
@@ -299,10 +314,14 @@ END_SQL
     # Load the data
     if [ -s "$LOCATION_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $LOCATION statements"
-        env table="$LOCATION" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $LOCATION_LIST >$LOCATION.sql
+        env table="$LOCATION" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $LOCATION_LIST >$LOCATION_LIST.sql
         # Then load with:
-        cat $LOCATION.sql | sqlite3 $DBASE
-        echo "$LOCATION.sql loaded."
+        if sqlite3 $DBASE <$LOCATION_LIST.sql; then
+            echo "$LOCATION_LIST.sql loaded."
+            rm "$LOCATION_LIST.sql" 2>/dev/null
+        else
+            echo "**error failed to load $LOCATION_LIST.sql" >&2
+        fi
     else
         echo "Created table $LOCATION and indices, no data to load." >&2
     fi
@@ -335,13 +354,28 @@ END_SQL
     # Load the data
     if [ -s "$SCHED_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $SCHED statements"
-        env table="$SCHED" env a="$server" env b="$script" env c="$c0" env d="$c1" env e="$c2" env f="$c3" env g="$c4" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}, $ENV{d}, $ENV{e}, $ENV{f}, $ENV{g}) VALUES ("$v[0]", "$v[1]", "$v[2]", "$v[3]", "$v[4]", "$v[5]", "$v[6]");\n/);' $SCHED_LIST >$SCHED.sql
+        env table="$SCHED" env a="$server" env b="$script" env c="$c0" env d="$c1" env e="$c2" env f="$c3" env g="$c4" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}, $ENV{d}, $ENV{e}, $ENV{f}, $ENV{g}) VALUES ("$v[0]", "$v[1]", "$v[2]", "$v[3]", "$v[4]", "$v[5]", "$v[6]");\n/);' $SCHED_LIST >$SCHED_LIST.sql
         # Then load with:
-        cat $SCHED.sql | sqlite3 $DBASE
-        echo "$SCHED.sql loaded."
+        if sqlite3 $DBASE <$SCHED_LIST.sql; then
+            echo "$SCHED_LIST.sql loaded."
+            rm "$SCHED_LIST.sql" 2>/dev/null
+        else
+            echo "**error failed to load $SCHED_LIST.sql" >&2
+        fi
     else
         echo "Created table $SCHED and indices, no data to load." >&2
     fi
+}
+
+# Removes all and only the list files audit creates.
+# param:  none
+remove_lst_files()
+{
+    for THIS_FILE in "${OUTPUT_FILES[@]}"
+    do
+        echo "removing $THIS_FILE..." >&2
+        rm "$THIS_FILE" 2>/dev/null
+    done
 }
 
 # Prepares the tarball and cleans up.
@@ -354,22 +388,18 @@ clean_up()
     fi
     tar cvf $HOSTNAME.audit.tar "$FILE_LIST" "$DEPEND_LIST" "$SCHED_LIST" "$PROJECT_LIST" "$CONNECT_LIST" "$LOCATION_LIST"
     if [ -s "$HOSTNAME.audit.tar" ]; then
-        rm "$FILE_LIST" 2>/dev/null
-        rm "$DEPEND_LIST" 2>/dev/null
-        rm "$SCHED_LIST" 2>/dev/null
-        rm "$PROJECT_LIST" 2>/dev/null
-        rm "$CONNECT_LIST" 2>/dev/null
-        rm "$LOCATION_LIST" 2>/dev/null
+        remove_lst_files
     else
         echo "**error: the tarball of audit files wasn't created!" >&2
         exit 3
     fi
 }
+
 ############################# End of Functions #################################
 
 
 # Loop through the file list and pull out relevant info in pipe-delimited files appending as we go.
-while getopts ":aAcdsx?" opt; do
+while getopts ":aAcdRsx?" opt; do
   case $opt in
     A)  echo "-A to audit and create all tables as flat files. See (-d) to create the database." >&2
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_LIST." >&2
@@ -394,6 +424,24 @@ while getopts ":aAcdsx?" opt; do
     d)	echo "-d to create database from existing files." >&2 
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] building database: $DBASE." >&2
         build_database
+        ;;
+    R)	echo "-R to rebuild the database from existing tarballs." >&2 
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] building database: $DBASE." >&2
+        if [ -e "$DBASE" ]; then
+            ANSWER=$(confirm "re-create $DBASE and load any data ")
+            if [ "$ANSWER" == "$FALSE" ]; then
+                echo "Nothing to do. exiting" >&2
+                exit 1
+            fi
+        fi
+        rm "$DBASE" 2>/dev/null
+        echo "["`date +'%Y-%m-%d %H:%M:%S'`"] creating $DBASE and loading data." >&2
+        for TARBALL in $(ls *.audit.tar); do
+            echo "working on $TARBALL..." >&2
+            tar xvf "$TARBALL"
+            build_database
+            remove_lst_files
+        done
         ;;
     s)  echo "-s to display database schema." >&2
         if [ -s "$DBASE" ]; then
