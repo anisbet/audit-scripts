@@ -43,7 +43,7 @@ PROJECT_LIST="$PROJECT.lst"   # Relates sibling scripts together.
 CONNECT_LIST="$CONNECT.lst"   # The other servers the script may interact with.
 LOCATION_LIST="$LOCATION.lst" # Where the file is located on a given server's file system.
 HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0) # just the conventional name of the server.
-VERSION=1.0
+VERSION=1.2
 ############################# Functions #################################
 # Display usage message.
 # param:  none
@@ -59,10 +59,14 @@ Usage: $0 [-option]
  the relationships of home brew software that interact with the ILS.
 
  Switches:
- -a: Audit scripts and create flat files only. See -d to have the files loaded.
+ -a: Audit scripts and create flat files only. This is used for just auditing a 
+     machine, then using the results on a different machine, say where the database
+     is, or will be created. This flag creates a tarball for the purposes of moving
+     the files, then deletes all of its' list files.
  -A: Perform all tasks required in an audit. Includes searching for all the scripts
      analysing them for dependencies, schedule, logging their projects, 
-     creating a database called $DBASE.
+     creating a database called $DBASE. This flag creates a tarball for the purposes of moving
+     the files, then deletes all of its' list files.
  -c: Checks the cron for actively scheduled scripts and reports.
  -d: Build the database and load the data.
  -s: Show the database schema. If the database doesn't exist you will be prompted 
@@ -339,6 +343,28 @@ END_SQL
         echo "Created table $SCHED and indices, no data to load." >&2
     fi
 }
+
+# Prepares the tarball and cleans up.
+# param:  none
+clean_up()
+{
+    if [ -s "$HOSTNAME.audit.tar" ]; then
+        # remove, don't update the tarball.
+        rm "$HOSTNAME.audit.tar" 2>/dev/null
+    fi
+    tar cvf $HOSTNAME.audit.tar "$FILE_LIST" "$DEPEND_LIST" "$SCHED_LIST" "$PROJECT_LIST" "$CONNECT_LIST" "$LOCATION_LIST"
+    if [ -s "$HOSTNAME.audit.tar" ]; then
+        rm "$FILE_LIST" 2>/dev/null
+        rm "$DEPEND_LIST" 2>/dev/null
+        rm "$SCHED_LIST" 2>/dev/null
+        rm "$PROJECT_LIST" 2>/dev/null
+        rm "$CONNECT_LIST" 2>/dev/null
+        rm "$LOCATION_LIST" 2>/dev/null
+    else
+        echo "**error: the tarball of audit files wasn't created!" >&2
+        exit 3
+    fi
+}
 ############################# End of Functions #################################
 
 
@@ -352,12 +378,14 @@ while getopts ":aAcdsx?" opt; do
         audit_scripts
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding data to the database." >&2
         build_database
+        clean_up
         ;;
     a)  echo "-a to audit scripts and create flat files only. See (-d) to create the database." >&2
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_LIST." >&2
         audit_cron
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] conducting audit." >&2
         audit_scripts
+        clean_up
         ;;
     c)	echo "-c to audit the crontab only." >&2 
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] adding cron entries to $SCHED_LIST." >&2
