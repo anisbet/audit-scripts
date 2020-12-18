@@ -43,8 +43,8 @@ PROJECT_LIST="$PROJECT.lst"   # Relates sibling scripts together.
 CONNECT_LIST="$CONNECT.lst"   # The other servers the script may interact with.
 LOCATION_LIST="$LOCATION.lst" # Where the file is located on a given server's file system.
 declare -a OUTPUT_FILES=("$FILE_LIST" "$DEPEND_LIST" "$SCHED_LIST" "$PROJECT_LIST" "$CONNECT_LIST" "$LOCATION_LIST")
-HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0) # just the conventional name of the server.
-VERSION=1.3
+HOSTNAME=$(hostname | pipe.pl -W'\.' -oc0 -ec0:lc) # just the conventional name of the server.
+VERSION=1.4
 ############################# Functions #################################
 # Display usage message.
 # param:  none
@@ -217,7 +217,7 @@ END_SQL
     if [ -s "$DEPEND_LIST" ]; then
         # Load the data
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $DEPEND statements"
-        env table="$DEPEND" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $DEPEND_LIST >$DEPEND_LIST.sql
+        env table="$DEPEND" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); $v[0] = lc($v[0]); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $DEPEND_LIST >$DEPEND_LIST.sql
         # Then load with:
         if sqlite3 $DBASE <$DEPEND_LIST.sql; then
             echo "$DEPEND_LIST.sql loaded."
@@ -250,7 +250,7 @@ END_SQL
     # Load the data
     if [ -s "$PROJECT_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $PROJECT statements"
-        env table="$PROJECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $PROJECT_LIST >$PROJECT_LIST.sql
+        env table="$PROJECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); $v[0] = lc($v[0]); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $PROJECT_LIST >$PROJECT_LIST.sql
         # Then load with:
         if sqlite3 $DBASE <$PROJECT_LIST.sql; then
             echo "$PROJECT_LIST.sql loaded."
@@ -283,7 +283,7 @@ END_SQL
     # Load the data
     if [ -s "$CONNECT_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $CONNECT statements"
-        env table="$CONNECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $CONNECT_LIST >$CONNECT_LIST.sql
+        env table="$CONNECT" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); $v[0] = lc($v[0]); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $CONNECT_LIST >$CONNECT_LIST.sql
         # Then load with:
         if sqlite3 $DBASE <$CONNECT_LIST.sql; then
             echo "$CONNECT_LIST.sql loaded."
@@ -314,7 +314,7 @@ END_SQL
     # Load the data
     if [ -s "$LOCATION_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $LOCATION statements"
-        env table="$LOCATION" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $LOCATION_LIST >$LOCATION_LIST.sql
+        env table="$LOCATION" env a="$server" env b="$script" env c="$c0" perl -ne 'chomp(@v = split(m/\|/)); $v[0] = lc($v[0]); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}) VALUES ("$v[0]", "$v[1]", "$v[2]");\n/);' $LOCATION_LIST >$LOCATION_LIST.sql
         # Then load with:
         if sqlite3 $DBASE <$LOCATION_LIST.sql; then
             echo "$LOCATION_LIST.sql loaded."
@@ -354,7 +354,7 @@ END_SQL
     # Load the data
     if [ -s "$SCHED_LIST" ]; then
         echo "["`date +'%Y-%m-%d %H:%M:%S'`"] preparing sql $SCHED statements"
-        env table="$SCHED" env a="$server" env b="$script" env c="$c0" env d="$c1" env e="$c2" env f="$c3" env g="$c4" perl -ne 'chomp(@v = split(m/\|/)); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}, $ENV{d}, $ENV{e}, $ENV{f}, $ENV{g}) VALUES ("$v[0]", "$v[1]", "$v[2]", "$v[3]", "$v[4]", "$v[5]", "$v[6]");\n/);' $SCHED_LIST >$SCHED_LIST.sql
+        env table="$SCHED" env a="$server" env b="$script" env c="$c0" env d="$c1" env e="$c2" env f="$c3" env g="$c4" perl -ne 'chomp(@v = split(m/\|/)); $v[0] = lc($v[0]); print(qq/INSERT OR REPLACE INTO $ENV{table} ($ENV{a}, $ENV{b}, $ENV{c}, $ENV{d}, $ENV{e}, $ENV{f}, $ENV{g}) VALUES ("$v[0]", "$v[1]", "$v[2]", "$v[3]", "$v[4]", "$v[5]", "$v[6]");\n/);' $SCHED_LIST >$SCHED_LIST.sql
         # Then load with:
         if sqlite3 $DBASE <$SCHED_LIST.sql; then
             echo "$SCHED_LIST.sql loaded."
